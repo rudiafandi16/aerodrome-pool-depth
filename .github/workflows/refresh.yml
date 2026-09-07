@@ -1,0 +1,56 @@
+name: Refresh ALIGN-USDC depth
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # daily 00:30 UTC
+  workflow_dispatch:        # manual "Run workflow" button
+
+permissions:
+  contents: write           # to commit the refreshed CSV back to the repo
+
+env:
+  POOL: 0x0f56aeba06f65e2790c5b6687f5c3128b7456f76
+  QUOTE: token1
+  START: "2026-08-18"
+  INTERVAL: "15"
+  OUT: depth_align_usdc_15m.csv
+  DUNE_TABLE: align_usdc_depth_15m
+  RPC: https://mainnet.base.org
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build depth CSV (retries on RPC flakiness)
+        run: |
+          for attempt in 1 2 3; do
+            if go run . -rpc "$RPC" -pool "$POOL" -quote "$QUOTE" -start "$START" \
+                        -linear-ts -interval "$INTERVAL" -out "$OUT" 2> run.log; then
+              break
+            fi
+            echo "attempt $attempt failed:"; tail -5 run.log
+            [ "$attempt" = 3 ] && exit 1
+            sleep 60
+          done
+          grep -vE "getLogs 0x" run.log
+          wc -l "$OUT"
+
+      - name: Upload to Dune (replaces the table)
+        env:
+          DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
+        run: python3 upload_dune.py "$OUT" "$DUNE_TABLE" "ALIGN-USDC 15m pool depth (auto-refreshed)"
+
+      - name: Commit refreshed CSV
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git diff --cached --quiet || git commit -m "data: refresh $OUT ($(date -u +%Y-%m-%dT%H:%MZ))"
+          git push
