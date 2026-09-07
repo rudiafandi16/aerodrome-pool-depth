@@ -9,7 +9,7 @@ permissions:
   contents: write           # to commit the refreshed CSV back to the repo
 
 env:
-  POOL: 0x0f56aeba06f65e2790c5b6687f5c3128b7456f76
+  POOL: "0x0f56aeba06f65e2790c5b6687f5c3128b7456f76"
   QUOTE: token1
   START: "2026-08-18"
   INTERVAL: "15"
