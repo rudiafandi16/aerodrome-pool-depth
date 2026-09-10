@@ -39,8 +39,10 @@ go run . -rpc https://mainnet.base.org -pool <pool> -quote token1 -start 2026-09
 
 ## Provider notes (measured 2026-09-03)
 
-- **Public https://mainnet.base.org**: getLogs accepts 10k-block ranges fine (~5 s each), batches are
-  capped at 10 calls, and it 429s quickly. Without `-linear-ts` the timestamp phase is the bottleneck
+- **Public https://mainnet.base.org**: since ~2026-09-08 getLogs is capped at a **2,000-block range**
+  (HTTP 413, "eth_getLogs is limited to a 2,000 range"); `-step` defaults to 2000 accordingly. Swap,
+  Mint and Burn are fetched in one OR-filtered request per chunk. Batches are capped at 10 calls,
+  and it 429s quickly. Without `-linear-ts` the timestamp phase is the bottleneck
   (needs `-batch 10 -workers 2` and takes ages). With `-linear-ts` it is the best free option.
 - **Alchemy free tier**: getLogs is limited to a **10-block range** — useless for this script.
   Batches of 100 work but return ~1.6 MB per batch. Intermittent 503s. Only worth it on PAYG.
@@ -102,8 +104,9 @@ Semantics preserved from the SQL (with `-interval`, read "hour" as "bucket" — 
   event, batched `-batch`/request across `-workers` goroutines. A busy pool over 4 months can be 100k+
   blocks. Prefer `-linear-ts`, which removes this phase entirely on Base; otherwise raise `-workers`
   on a provider with generous rate limits, lower it if you get 429s.
-- `eth_getLogs` ranges auto-bisect on provider errors, so `-step` can be large; 10000 is a safe
-  default for most Base providers.
+- `eth_getLogs` ranges auto-bisect on non-retryable provider errors (4xx other than 429/408 return
+  immediately; 429/5xx/network errors retry with backoff first). `-step` defaults to 2000 for the
+  public endpoint; raise it on a provider that allows wider ranges.
 - To iterate on the math without re-hitting the RPC, the natural next step is to cache decoded
   logs + timestamps to a local JSON/gob file — not implemented yet.
 
